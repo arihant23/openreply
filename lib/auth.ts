@@ -9,10 +9,21 @@ import { isEmailAllowedToSignIn } from "@/lib/env";
 type AdapterPrismaClient = Parameters<typeof PrismaAdapter>[0];
 
 const emailFrom = process.env.EMAIL_FROM ?? "OpenReply <login@example.com>";
-// Setting EMAIL_SERVER switches magic links to your own SMTP server, for
-// self-hosters who do not want a third-party mail service. Resend stays the
-// default, so an existing deployment is unaffected.
-const smtpServer = process.env.EMAIL_SERVER;
+// Keep connection URLs supported, while allowing self-hosters to enter an SMTP
+// password directly without URL-encoding it. STARTTLS is required on port 587.
+const smtpPort = Number(process.env.SMTP_PORT || 587);
+const smtpServer = process.env.EMAIL_SERVER || (process.env.SMTP_HOST
+  ? {
+      host: process.env.SMTP_HOST,
+      port: smtpPort,
+      secure: smtpPort === 465,
+      requireTLS: true,
+      auth: {
+        user: process.env.SMTP_USERNAME,
+        pass: process.env.SMTP_PASSWORD,
+      },
+    }
+  : undefined);
 
 /**
  * Provider id the login form has to sign in with. It differs per transport,
