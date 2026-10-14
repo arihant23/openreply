@@ -446,5 +446,15 @@
   "{name} Campaign Report": "Relatório da campanha {name}",
   "{type} post": "Publicação {type}",
   "”": "”",
-  "← Campaigns": "← Campanhas"
+  "← Campaigns": "← Campanhas",
+  "Defaults for @{username}": "Padrões para @{username}",
+  "Reuse these messages, buttons and settings in new campaigns. Choose the post and links each time.": "Reutilize estas mensagens, botões e configurações nas novas campanhas. Escolha a publicação e os links a cada vez.",
+  "Defaults saved. New campaigns will start with these settings.": "Padrões salvos. As novas campanhas começarão com estas configurações.",
+  "Saved defaults applied. You can change anything for this campaign.": "Padrões salvos aplicados. Você pode alterar qualquer opção nesta campanha.",
+  "Could not load defaults. You can set up this campaign manually or reload to try again.": "Não foi possível carregar os padrões. Configure esta campanha manualmente ou recarregue para tentar novamente.",
+  "Could not save defaults. Check message lengths and button labels, then try again.": "Não foi possível salvar os padrões. Verifique o tamanho das mensagens e os rótulos dos botões e tente novamente.",
+  "Save as defaults": "Salvar como padrão",
+  "Add the destination URL for this campaign.": "Adicione o URL de destino desta campanha.",
+  "Add the second destination URL for this campaign.": "Adicione o segundo URL de destino desta campanha.",
+  "We send the link only after they tap the button and Instagram confirms the follow. If it can't be verified, we ask them to try again.": "Só enviamos o link depois que a pessoa toca no botão e o Instagram confirma que ela está seguindo. Se não for possível verificar, pedimos que tente novamente."
 }

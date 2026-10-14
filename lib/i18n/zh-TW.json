@@ -446,5 +446,15 @@
   "{name} Campaign Report": "{name} 活動報表",
   "{type} post": "{type} 貼文",
   "”": "」",
-  "← Campaigns": "← 返回活動列表"
+  "← Campaigns": "← 返回活動列表",
+  "Defaults for @{username}": "@{username} 的預設設定",
+  "Reuse these messages, buttons and settings in new campaigns. Choose the post and links each time.": "新活動會沿用這些訊息、按鈕及設定。每次請另選貼文及連結。",
+  "Defaults saved. New campaigns will start with these settings.": "已儲存預設設定。新活動將套用這些設定。",
+  "Saved defaults applied. You can change anything for this campaign.": "已套用預設設定。你可以修改此活動的任何選項。",
+  "Could not load defaults. You can set up this campaign manually or reload to try again.": "無法載入預設設定。你可以手動設定此活動，或重新整理後再試。",
+  "Could not save defaults. Check message lengths and button labels, then try again.": "無法儲存預設設定。請檢查訊息及按鈕文字的長度後再試。",
+  "Save as defaults": "儲存為預設",
+  "Add the destination URL for this campaign.": "請輸入此活動的目標網址。",
+  "Add the second destination URL for this campaign.": "請輸入此活動的第二個目標網址。",
+  "We send the link only after they tap the button and Instagram confirms the follow. If it can't be verified, we ask them to try again.": "對方點擊按鈕且 Instagram 確認已追蹤後，才傳送連結。若無法驗證追蹤狀態，我們會請對方再試一次。"
 }

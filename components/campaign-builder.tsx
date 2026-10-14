@@ -15,6 +15,7 @@
 import { useI18n } from "@/lib/i18n/provider";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { campaignDefaultsSchema, EMPTY_CAMPAIGN_DEFAULTS, type CampaignDefaults } from "@/lib/campaigns/defaults";
 import AccountSelect, { type AccountOption } from "@/components/account-select";
 import PostPicker from "@/components/post-picker";
 import CampaignPreview, { type PreviewTab } from "@/components/campaign-preview";
@@ -135,6 +136,10 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
   const router = useRouter();
 
   const [loading, setLoading] = useState(mode === "edit");
+  const [accountsLoaded, setAccountsLoaded] = useState(false);
+  const [defaultsLoadedFor, setDefaultsLoadedFor] = useState("");
+  const [defaultsSaving, setDefaultsSaving] = useState(false);
+  const [defaultsStatus, setDefaultsStatus] = useState<"idle" | "loaded" | "saved" | "load-error" | "save-error">("idle");
   const [notFound, setNotFound] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -239,7 +244,8 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
           (prev) => prev || payload.data.selectedInstagramAccountId || next[0]?.id || ""
         );
       })
-      .catch(() => setAccounts([]));
+      .catch(() => setAccounts([]))
+      .finally(() => setAccountsLoaded(true));
   }, []);
 
   // Prefill when editing.
@@ -366,6 +372,79 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
   }, [mode]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
+  function applyDefaults(d: CampaignDefaults) {
+    setMatchMode(d.matchMode);
+    setKeywordText(d.keywords.join(", "));
+    setDmTriggerEnabled(d.dmTriggerEnabled);
+    setPublicReplyEnabled(d.publicReplyEnabled);
+    setPublicReplyMessages(d.publicReplyMessages.length ? d.publicReplyMessages : [""]);
+    setOpeningDmEnabled(d.openingDmEnabled);
+    setOpeningDmMessage(d.openingDmMessage);
+    setOpeningDmButtonLabel(d.openingDmButtonLabel);
+    setDmMessage(d.dmMessage);
+    setLinkOpen(d.linkOpen);
+    setLinkButtonLabel(d.linkButtonLabel);
+    setSecondLinkOpen(d.secondLinkOpen);
+    setSecondaryButtonLabel(d.secondaryButtonLabel);
+    setTrackedDestinationUrl("");
+    setSecondaryDestinationUrl("");
+    setRequireFollow(d.requireFollow);
+    setFollowPromptMessage(d.followPromptMessage);
+    setFollowPromptButtonLabel(d.followPromptButtonLabel);
+    setFollowUpEnabled(d.followUpEnabled);
+    setFollowUpMessage(d.followUpMessage);
+    setFollowUpDelayMinutes(d.followUpDelayMinutes);
+  }
+
+  // Wait for account defaults before the editor is editable. CSV imports retain
+  // their explicit settings; switching accounts cancels stale responses.
+  useEffect(() => {
+    if (mode !== "new" || !selectedAccountId || importQueue) return;
+    let cancelled = false;
+    const params = new URLSearchParams({ instagramAccountId: selectedAccountId });
+    fetch("/api/automations/defaults?" + params, { cache: "no-store" })
+      .then((r) => r.json())
+      .then((payload) => {
+        if (cancelled) return;
+        if (!payload.success) throw new Error("Defaults unavailable");
+        const parsed = campaignDefaultsSchema.safeParse(payload.data);
+        applyDefaults(parsed.success ? parsed.data : EMPTY_CAMPAIGN_DEFAULTS);
+        setDefaultsStatus(parsed.success ? "loaded" : "idle");
+      })
+      .catch(() => {
+        if (cancelled) return;
+        applyDefaults(EMPTY_CAMPAIGN_DEFAULTS);
+        setDefaultsStatus("load-error");
+      })
+      .finally(() => { if (!cancelled) setDefaultsLoadedFor(selectedAccountId); });
+    return () => { cancelled = true; };
+  }, [mode, selectedAccountId, importQueue]);
+
+  async function saveDefaults() {
+    setDefaultsSaving(true);
+    setDefaultsStatus("idle");
+    const defaults: CampaignDefaults = {
+      matchMode, keywords, dmTriggerEnabled, publicReplyEnabled, publicReplyMessages,
+      openingDmEnabled, openingDmMessage, openingDmButtonLabel, dmMessage,
+      linkOpen, linkButtonLabel, secondLinkOpen, secondaryButtonLabel,
+      requireFollow, followPromptMessage, followPromptButtonLabel,
+      followUpEnabled, followUpMessage, followUpDelayMinutes,
+    };
+    try {
+      const res = await fetch("/api/automations/defaults", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ instagramAccountId: selectedAccountId, defaults }),
+      });
+      const payload = await res.json();
+      setDefaultsStatus(payload.success ? "saved" : "save-error");
+    } catch {
+      setDefaultsStatus("save-error");
+    } finally {
+      setDefaultsSaving(false);
+    }
+  }
+
   const username =
     accounts.find((a) => a.id === selectedAccountId)?.username ?? "yourbrand";
 
@@ -393,6 +472,10 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
       return setError(t("Pick a post or reel to trigger the campaign."));
     if (matchMode === "specific" && keywords.length === 0)
       return setError(t("Add at least one keyword, or switch to any word."));
+    if (linkOpen && !trackedDestinationUrl.trim())
+      return setError(t("Add the destination URL for this campaign."));
+    if (secondLinkOpen && !secondaryDestinationUrl.trim())
+      return setError(t("Add the second destination URL for this campaign."));
     if (!dmMessage.trim()) return setError(t("Add the DM with the link."));
     if (openingDmEnabled && (!openingDmMessage.trim() || !openingDmButtonLabel.trim()))
       return setError(t("Your opening DM needs a message and a button label."));
@@ -534,7 +617,7 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
     router.refresh();
   }
 
-  if (loading) {
+  if (loading || (mode === "new" && (!accountsLoaded || (!importQueue && selectedAccountId && defaultsLoadedFor !== selectedAccountId)))) {
     return <div className="panel h-64 rounded" />;
   }
 
@@ -585,7 +668,7 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
             <span className="text-sm text-muted">{t("New campaign")}</span>
           )}
         </div>
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex flex-wrap items-center gap-2">
           {importQueue && (
             <button
               type="button"
@@ -625,6 +708,29 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
             {saving ? t("Saving…") : mode === "new" ? t("Go Live") : t("Save changes")}
           </button>
         </div>
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-3 border-y border-border py-3">
+        <div className="min-w-0 space-y-1">
+          <p className="text-sm font-medium text-foreground">{t("Defaults for @{username}", { username })}</p>
+          <p className="max-w-prose text-xs text-muted">
+            {t("Reuse these messages, buttons and settings in new campaigns. Choose the post and links each time.")}
+          </p>
+          <p role="status" aria-live="polite" className={defaultsStatus === "load-error" || defaultsStatus === "save-error" ? "text-xs text-error" : "text-xs text-muted"}>
+            {defaultsStatus === "saved" && t("Defaults saved. New campaigns will start with these settings.")}
+            {defaultsStatus === "loaded" && t("Saved defaults applied. You can change anything for this campaign.")}
+            {defaultsStatus === "load-error" && t("Could not load defaults. You can set up this campaign manually or reload to try again.")}
+            {defaultsStatus === "save-error" && t("Could not save defaults. Check message lengths and button labels, then try again.")}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={saveDefaults}
+          disabled={saving || defaultsSaving || !selectedAccountId}
+          className="shrink-0 rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground hover:border-border-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:opacity-50"
+        >
+          {defaultsSaving ? t("Saving…") : t("Save as defaults")}
+        </button>
       </div>
 
       {/* min-w-0 on the cells: a grid item defaults to min-width:auto, so a
@@ -855,7 +961,7 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
                   maxLength={20}
                 />
                 <p className="text-xs text-muted">
-                  {t("We send the link only after they tap the button and Instagram confirms the follow. If it can't be verified, we send it anyway.")}
+                  {t("We send the link only after they tap the button and Instagram confirms the follow. If it can't be verified, we ask them to try again.")}
                 </p>
               </div>
             )}
