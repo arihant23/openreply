@@ -966,9 +966,8 @@ async function processPostback(job: Job<ProcessPostbackJob>): Promise<void> {
   // Follow-gate: before revealing the link, verify the user follows. On a
   // `followcheck:` tap a non-follower gets the prompt again (no quota spent);
   // on a read fallback a non-follower is silently skipped — the gate must not
-  // be bypassable by just reading the DM and waiting. On a tap, following or
-  // unverifiable (null) falls through and delivers the link — fail-open so a
-  // real follower is never trapped.
+  // be bypassable by just reading the DM and waiting. A tap also requires a
+  // confirmed follow; an unavailable check must never release a gated link.
   if ((isFollowCheck || fallback) && automation.requireFollow) {
     const follows = await getUserFollowStatus({
       context: accessToken,
@@ -979,7 +978,7 @@ async function processPostback(job: Job<ProcessPostbackJob>): Promise<void> {
     // "User consent is required", i.e. null), so failing open here handed the
     // link to anyone who read the opening DM and waited, follower or not.
     if (fallback && follows !== true) return;
-    if (follows === false) {
+    if (follows !== true) {
       if (fallback) return;
 
       // A tap on an opening-DM button is not a claim to follow — most people
@@ -1038,7 +1037,9 @@ async function processPostback(job: Job<ProcessPostbackJob>): Promise<void> {
               workspaceId: automation.workspaceId,
               source: "WORKER",
               level: "INFO",
-              message: "Follow gate rejected a button tap",
+              message: follows === null
+                ? "Follow gate could not verify a button tap"
+                : "Follow gate rejected a button tap",
               payload: {
                 automationId: automation.id,
                 automationName: automation.name,
@@ -1052,7 +1053,9 @@ async function processPostback(job: Job<ProcessPostbackJob>): Promise<void> {
 
       const promptText = renderMessageWithoutLink({
         message:
-          automation.followPromptMessage ||
+          (follows === null
+            ? "I couldn't confirm your follow yet. Please follow this account, then tap below to check again."
+            : automation.followPromptMessage) ||
           "quick favor before i send your link. i don't make any money from this, it's free. if you want to support me, just don't unfollow after, and star the repo on github if it helps you. tap the button once you're following and i'll send it over",
         commenterName,
       });
@@ -1398,10 +1401,8 @@ async function processMessage(job: Job<ProcessMessageJob>): Promise<void> {
     // Follow gate: anyone not confirmed as a follower gets the prompt instead of
     // the link, with the same `followcheck:` button that re-verifies on tap.
     // `null` (unverifiable) prompts too — this is first contact, exactly like a
-    // comment, so it follows processComment's fail-closed rule rather than the
-    // postback path's fail-open one. Fail-open is only safe after a tap, where
-    // the user has already claimed to follow; here it would hand the link to
-    // anyone whose status the API happens not to resolve.
+    // comment. The postback path also requires a confirmed follow before it
+    // releases the link.
     let sendFollowPrompt = false;
     if (automation.requireFollow) {
       const follows = await getUserFollowStatus({

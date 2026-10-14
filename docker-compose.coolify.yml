@@ -1,0 +1,96 @@
+# Git-based Coolify deployment. Set the web domain to https://dm.sp9ms.in:3000.
+# Coolify generates the SERVICE_* secrets once and reuses them across services.
+x-app: &app
+  build:
+    context: .
+    dockerfile: Dockerfile
+  restart: unless-stopped
+  init: true
+  environment: &app-env
+    NODE_ENV: production
+    NEXTAUTH_URL: ${NEXTAUTH_URL:-https://dm.sp9ms.in}
+    NEXTAUTH_SECRET: ${SERVICE_PASSWORD_64_AUTH}
+    ENCRYPTION_KEY: ${SERVICE_HEX_64_ENCRYPTION}
+    CRON_SECRET: ${SERVICE_PASSWORD_64_CRON}
+    DATABASE_URL: postgresql://openreply:${SERVICE_PASSWORD_64_POSTGRES}@postgres:5432/openreply
+    REDIS_URL: redis://:${SERVICE_PASSWORD_64_REDIS}@redis:6379
+    ALLOWED_EMAILS: ${ALLOWED_EMAILS:-setup-pending@example.invalid}
+    EMAIL_FROM: ${EMAIL_FROM:-OpenReply <login@dm.sp9ms.in>}
+    EMAIL_SERVER: ${EMAIL_SERVER:-}
+    RESEND_API_KEY: ${RESEND_API_KEY:-}
+    META_GRAPH_API_VERSION: ${META_GRAPH_API_VERSION:-v25.0}
+    INSTAGRAM_APP_ID: ${INSTAGRAM_APP_ID:-}
+    INSTAGRAM_APP_SECRET: ${INSTAGRAM_APP_SECRET:-}
+    FACEBOOK_APP_SECRET: ${FACEBOOK_APP_SECRET:-}
+    WEBHOOK_VERIFY_TOKEN: ${SERVICE_PASSWORD_64_WEBHOOK}
+    DB_POOL_MAX: 3
+
+services:
+  web:
+    <<: *app
+    command: ["sh", "-c", "npm run db:migrate && exec npm run start"]
+    expose:
+      - "3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    # The full /api/health also requires the worker heartbeat. Use a web-only
+    # check here so the worker can start after migrations and the web server.
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3000/login"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 90s
+
+  worker:
+    <<: *app
+    command: ["npm", "run", "worker"]
+    depends_on:
+      web:
+        condition: service_healthy
+
+  scheduler:
+    <<: *app
+    command: ["sh", "scripts/cron.sh"]
+    environment:
+      <<: *app-env
+      CRON_BASE_URL: http://web:3000
+    depends_on:
+      web:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: openreply
+      POSTGRES_USER: openreply
+      POSTGRES_PASSWORD: ${SERVICE_PASSWORD_64_POSTGRES}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U openreply -d openreply"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    environment:
+      REDIS_PASSWORD: ${SERVICE_PASSWORD_64_REDIS}
+    command: ["sh", "-c", "exec redis-server --appendonly yes --appendfsync everysec --maxmemory-policy noeviction --requirepass \"$$REDIS_PASSWORD\""]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$$REDIS_PASSWORD\" redis-cli ping | grep -q PONG"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  postgres-data:
+  redis-data:

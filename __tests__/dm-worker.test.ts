@@ -1450,6 +1450,39 @@ describe("durable Zernio postback delivery", () => {
 describe("DM Worker — follow-gate re-check", () => {
   const gated = { ...mockAutomation, requireFollow: true, trackedLinks: [] };
 
+  it("withholds the link on unverifiable taps and releases it after a confirmed follow", async () => {
+    mockPrisma.automation.findFirst.mockResolvedValue(gated);
+    mockGetUserFollowStatus.mockResolvedValue(null);
+    const tap = {
+      instagramAccountId: "ig_456",
+      userId: "commenter_999",
+      payload: "followcheck:auto_789",
+    };
+    const process = getProcessor();
+
+    await process(createMockPostbackJob(tap));
+    expect(mockSendDirectMessage).not.toHaveBeenCalled();
+    expect(mockReserveWorkspaceDMSend).not.toHaveBeenCalled();
+    expect(mockQueueAdd).toHaveBeenCalled();
+
+    await process(createMockPostbackJob({
+      ...tap, followRecheck: true, followRecheckAttempt: 2,
+    }));
+    expect(mockSendDirectMessage).not.toHaveBeenCalled();
+    expect(mockSendDirectMessageWithButton).toHaveBeenCalledWith(
+      "decrypted_token", "ig_456", "commenter_999",
+      expect.stringContaining("couldn't confirm"), expect.any(String),
+      "followcheck:auto_789",
+    );
+
+    mockGetUserFollowStatus.mockResolvedValue(true);
+    await process(createMockPostbackJob(tap));
+    expect(mockSendDirectMessage).toHaveBeenCalledWith(
+      "decrypted_token", "ig_456", "commenter_999",
+      "Hey commenter_user! Here is the link: https://example.com",
+    );
+  });
+
   it("re-checks a first false follow later instead of rejecting the tap", async () => {
     mockPrisma.automation.findFirst.mockResolvedValue(gated);
     mockGetUserFollowStatus.mockResolvedValue(false);
